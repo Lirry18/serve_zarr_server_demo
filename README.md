@@ -1,1 +1,1 @@
-# serve_zarr_server_demo
+# Simple demo to show how we can publish ZARR data with XPublish
