@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Hindcast Globe – Heatmap</title>
+<style>html,body,#container{margin:0;height:100%;}</style>
+
+<!-- ❶  ONE script is enough: deck.gl 8.9 already bundles the right luma.gl -->
+<script src="https://unpkg.com/deck.gl@8.9.32/dist.min.js"></script>
+</head>
+
+<body>
+<div id="container"></div>
+<select id="lead"></select>
+
+<script>
+/* ❷  create a tiny dropdown 0–10 days */
+for (let d = 0; d <= 10; d++) {
+  const opt = document.createElement('option');
+  opt.value = opt.text = d; document.getElementById('lead').appendChild(opt);
+}
+document.getElementById('lead').onchange = loadData;
+
+/* ❸  init globe view */
+const deckgl = new deck.DeckGL({
+  container: 'container',
+  views: new deck._GlobeView(),
+  initialViewState: {latitude: 30, longitude: 5, zoom: 0.7},
+  controller: true,
+  layers: []
+});
+
+const API = 'http://localhost:8000/geojson';   // <- your FastAPI endpoint
+
+async function loadData() {
+  const lead = document.getElementById('lead').value;
+  const qs   = new URLSearchParams({
+    init  : '2021-12-30T00:00:00Z',
+    lead  : lead,
+    member: 0,
+    plevel: 500
+    // bbox omitted  -> whole globe
+  });
+  console.log(qs)
+
+  const geojson = await fetch(`${API}?${qs}`).then(r => r.json());
+
+  deckgl.setProps({
+    layers: [
+      new deck.HeatmapLayer({
+        id: 'hindcast-heat',
+        data: geojson,
+        getPosition: f => f.geometry.coordinates,
+        getWeight  : f => f.properties.geopotential,
+        radiusPixels: 35,
+        aggregation: 'MEAN'
+      })
+    ]
+  });
+}
+
+loadData();     // first render
+</script>
+</body>
+</html>
