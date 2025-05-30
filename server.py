@@ -52,7 +52,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,        # or ["*"] during development
     allow_credentials=False,
-    allow_methods=["GET"],        # keep it tight
+    allow_methods=["GET", "OPTIONS"],        # keep it tight
     allow_headers=["*"],
 )
 
@@ -131,7 +131,7 @@ def geojson(
 
     da = (
         ds["geopotential"]
-        .sel(init=np.datetime64(init),
+        .sel(init="2021-01-02T00:00:00.000000000",
              lead=lead_td,
              member=member,
              pressure_level=plevel)

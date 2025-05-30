@@ -1,0 +1,261 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Compare Two Hindcast Globes/Maps</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    #wrapper {
+      display: flex;
+      height: 100%;
+    }
+    .panel {
+      flex: 1;
+      position: relative;
+    }
+    .panel select {
+      position: absolute;
+      top: 10px;
+      padding: 4px 8px;
+      background: white;
+      z-index: 100;    /* <-- add this */
+    }
+    .panel select:first-of-type {
+      left: 10px;
+    }
+    .panel select:nth-of-type(2) {
+      left: 140px;
+    }
+    .panel select:nth-of-type(3) {
+      left: 270px;
+    }
+    .panel .loading {
+      display: none;               /* hidden by default */
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(128,128,128,0.7);
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;                /* above selects & tooltip */
+    }
+    .panel .loading.show {
+      display: flex;
+    }
+    .globe {
+      width: 100%;
+      height: 100%;
+    }
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-radius: 4px;
+      display: none;
+      z-index: 2;
+    }
+  </style>
+
+  <!-- deck.gl + geo-layers + d3 -->
+  <script src="https://unpkg.com/deck.gl@8.9.32/dist.min.js"></script>
+  <script src="https://unpkg.com/@deck.gl/geo-layers@8.9.32/dist.min.js"></script>
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+</head>
+
+<body>
+  <div id="wrapper">
+    <div class="panel" id="panel1">
+      <select id="model1">
+        <option value="runA">Model Run A</option>
+        <option value="runB">Model Run B</option>
+      </select>
+      <select id="view1">
+        <option value="globe">Globe</option>
+        <option value="map">Flat Map</option>
+      </select>
+      <select id="lead1"></select>
+      <div id="globe1" class="globe"></div>
+      <div class="tooltip"></div>
+      <div class="loading">Loading…</div>
+    </div>
+    <div class="panel" id="panel2">
+      <select id="model2">
+        <option value="runA">Model Run A</option>
+        <option value="runB">Model Run B</option>
+      </select>
+      <select id="view2">
+        <option value="globe">Globe</option>
+        <option value="map">Flat Map</option>
+      </select>
+      <select id="lead2"></select>
+      <div id="globe2" class="globe"></div>
+      <div class="tooltip"></div>
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:8000/geojson';
+
+    [1,2].forEach(i => {
+      const sel = document.getElementById('lead'+i);
+      for (let d=0; d<=10; d++) {
+        const o = document.createElement('option');
+        o.value = o.text = d;
+        sel.appendChild(o);
+      }
+    });
+
+    // 1) Globe background via a WMSLayer (full coverage)
+    function createGlobeBg() {
+      return new deck._WMSLayer({
+        id: `osm-wms-globe`,
+        data: 'https://ows.terrestris.de/osm/service',
+        serviceType: 'wms',
+        layers: ['OSM-WMS'],
+        parameters: { format: 'image/png', transparent: false },
+        tileSize: 512,
+        coordinateSystem: deck.COORDINATE_SYSTEM.LNGLAT
+      });
+    }
+
+    // 2) Flat‐map background via TileLayer
+    function createMapBg() {
+      return new deck.TileLayer({
+        id: 'osm-tiles',
+        data: 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        minZoom: 0, maxZoom: 19, tileSize: 256,
+        renderSubLayers: props => {
+          const { west, south, east, north } = props.tile.bbox;
+          return new deck.BitmapLayer(props, {
+            data: null,
+            image: props.data,
+            opacity: 0.4, 
+            bounds: [west, south, east, north],
+            parameters: { depthTest: false }
+          });
+        }
+      });
+    }
+
+    // 3) Initialize one panel (globe/map + dropdowns + tooltip)
+    function initPanel(panelId, globeDivId, modelSelectId, viewSelectId, leadId) {
+      const panel   = document.getElementById(panelId);
+      const tooltip = panel.querySelector('.tooltip');
+      const modelSel= document.getElementById(modelSelectId);
+      const viewSel = document.getElementById(viewSelectId);
+      const leadSel = document.getElementById(leadId);
+
+      const globeBg = createGlobeBg();
+      const mapBg   = createMapBg();
+
+      // Shared DeckGL instance
+      const deckgl = new deck.DeckGL({
+        container: globeDivId,
+        views: [],                // set dynamically
+        initialViewState: {
+          latitude: 20,
+          longitude: 0,
+          zoom: 0.6,
+          bearing: 0,
+          pitch: 0
+        },
+        controller: true,
+        layers: []                // set dynamically
+      });
+
+      // Redraw whenever model or view changes
+      modelSel.onchange = loadPanel;
+      viewSel.onchange = loadPanel;
+      leadSel.onchange = loadPanel;
+      loadPanel();
+
+      async function loadPanel() {
+        const loading = panel.querySelector('.loading');
+        loading.classList.add('show');    
+        // a) fetch the data (both models same for now)
+        const qs = new URLSearchParams({
+          init:   '2021-12-30T00:00:00Z',
+          lead:   leadSel.value,
+          member: 0,
+          plevel: 500
+        });
+        const geojson = await fetch(`${API}?${qs}`).then(r => r.json());
+        geojson.features.forEach(f => {
+          f.geometry.coordinates[0] =
+            ((f.geometry.coordinates[0] + 180) % 360) - 180;
+        });
+
+        // b) build D3 color & radius scales
+        const pts    = geojson.features;
+        const vals   = pts.map(f => f.properties.geopotential);
+        const minVal = Math.min(...vals), maxVal = Math.max(...vals);
+        const colorScale  = d3.scaleSequential(d3.interpolateViridis)
+                              .domain([minVal, maxVal]);
+        const radiusScale = d3.scaleLinear()
+                              .domain([minVal, maxVal])
+                              .range([10000, 50000]);
+
+        // c) scatter layer
+        const scatter = new deck.ScatterplotLayer({
+          id:    `scatter-${panelId}`,
+          data:  pts,
+          pickable: true,
+          getPosition: f => f.geometry.coordinates,
+          getRadius:   f => radiusScale(f.properties.geopotential),
+          radiusUnits: 'meters',
+          getFillColor: f => {
+            const c = d3.color(colorScale(f.properties.geopotential));
+            return [c.r, c.g, c.b, 180];
+          },
+          onHover: info => {
+            if (info.object) {
+              tooltip.style.display = 'block';
+              tooltip.style.left = info.x + 'px';
+              tooltip.style.top  = info.y + 'px';
+              tooltip.innerHTML = `
+                <div><b>Lon,Lat:</b> ${
+                  info.object.geometry.coordinates
+                    .map(c=>c.toFixed(2)).join(', ')
+                }</div>
+                <div><b>hPa:</b> ${
+                  info.object.properties.geopotential.toFixed(1)
+                }</div>
+              `;
+            } else {
+              tooltip.style.display = 'none';
+            }
+          }
+        });
+
+        // d) pick view & background
+        const isGlobe = viewSel.value === 'globe';
+        const bgLayer = isGlobe ? globeBg : mapBg;
+        const views   = isGlobe
+          ? [ new deck._GlobeView() ]
+          : [ new deck.MapView({ controller: true }) ];
+
+
+        deckgl.setProps({
+          views,
+          layers: [ bgLayer, scatter ]
+        });
+        loading.classList.remove('show');
+      }
+    }
+
+    // 4) Kick off both panels
+    initPanel('panel1', 'globe1', 'model1', 'view1', 'lead1');
+    initPanel('panel2', 'globe2', 'model2', 'view2', 'lead2');
+  </script>
+</body>
+</html>
