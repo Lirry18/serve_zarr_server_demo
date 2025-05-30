@@ -14,10 +14,7 @@ security = HTTPBearer()
 def get_supabase_client():
     return create_client(url, anon_key)
 
-async def get_current_user(
-    creds: HTTPAuthorizationCredentials = Depends(security),
-    sb = Depends(get_supabase_client),
-):
+async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security), sb = Depends(get_supabase_client)):
     """
     FastAPI dependency:
     - reads the Bearer token from the Authorization header
@@ -47,16 +44,3 @@ def login(email: str, password: str) -> str:
     if not token:
         raise HTTPException(401, "Login did not return an access token")
     return token
-
-
-
-
-## CREATE SIGNUP
-
-
-if __name__ == "__main__":
-    try:
-        token = login("l.pinter@ascenscia.ai", "Peeretje1!")
-        print("Got token:", token)
-    except Exception as e:
-        print(e)

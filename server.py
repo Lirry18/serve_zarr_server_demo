@@ -3,7 +3,6 @@ Start:
     uvicorn server:app --reload --port 8000
 """
 
-import os
 import xarray as xr
 import xpublish as xp
 from fastapi import Depends, HTTPException, Query
@@ -19,26 +18,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Literal
 from auth import get_current_user, login
+import os
+from dotenv import load_dotenv
 
 
-# CONFIG (MOVE TO ENV)
+# ENV
 
-ZARR_PATH2 = "gs://base-era5_low_res/data.zarr"
-ZARR_PATH = "gs://hindcasts_2021-01-02-2021-12-20_n65_daily_aqc2ou/hindcast_aifs_fragrant-sunset-420.zarr/"
+load_dotenv(".env")
 
 # LOAD DATA
 
 ds = xr.open_zarr(
-    ZARR_PATH,
+    os.getenv("ZARR_PATH"),chunks={"init": 1}
 )
 
 origins = [
-    "http://localhost:8001",      # where the globe.html is served
+    "http://localhost:8001",   
     "http://127.0.0.1:8001",
 ]
-
-
-print(ds["geopotential"].min().values, ds["geopotential"].max().values)
 
 # XPUBLISH APP
 
