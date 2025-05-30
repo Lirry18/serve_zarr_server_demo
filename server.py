@@ -16,6 +16,9 @@ from fastapi import HTTPException
 import numpy as np
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Literal
+from auth import get_current_user, login
 
 
 # CONFIG (MOVE TO ENV)
@@ -52,9 +55,19 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,        # or ["*"] during development
     allow_credentials=False,
-    allow_methods=["GET", "OPTIONS"],        # keep it tight
+    allow_methods=["GET", "OPTIONS", "POST"],        # keep it tight
     allow_headers=["*"],
 )
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
 
 def subset_bbox(da, west, south, east, north):
     # Make mask to handle west south east noth to lat long
@@ -84,6 +97,17 @@ def da_to_geojson(da: xr.DataArray, value_key: str = "value") -> dict:
 
     return {"type": "FeatureCollection", "features": features}
 
+
+@app.post("/login", response_model=TokenResponse, tags=["auth"])
+def login_endpoint(creds: LoginRequest):
+    try:
+        token = login(creds.email, creds.password)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"access_token": token, "token_type": "bearer"}
 
 
 @app.get("/mean14", summary="14-daags hPa gemiddelde binnen bbox", description="Retourneert het gemiddelde van geopotential op `pressure_level` in het opgegeven gebied.")
@@ -126,6 +150,7 @@ def geojson(
     south : float|None = None,
     east  : float|None = None,
     north : float|None = None,
+    user  = Depends(get_current_user),
 ):
     lead_td = np.timedelta64(lead, "D")
 
