@@ -14,12 +14,8 @@ security = HTTPBearer()
 def get_supabase_client():
     return create_client(url, anon_key)
 
+## Reads the bearer token from the header, validate and return
 async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security), sb = Depends(get_supabase_client)):
-    """
-    FastAPI dependency:
-    - reads the Bearer token from the Authorization header
-    - asks Supabase to validate it and return the user
-    """
     try:
         res = sb.auth.get_user(creds.credentials)
     except Exception:
@@ -30,6 +26,8 @@ async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(401, "Invalid or unconfirmed user")
     return user
 
+
+## Logs in with username pw credentials at Supabase, returns API Accesstoken
 def login(email: str, password: str) -> str:
     supabase = get_supabase_client()
     try:
