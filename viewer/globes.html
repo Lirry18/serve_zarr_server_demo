@@ -67,7 +67,7 @@
 
   <!-- deck.gl + geo-layers + d3 -->
   <script src="https://unpkg.com/deck.gl@8.9.32/dist.min.js"></script>
-  <script src="https://unpkg.com/@deck.gl/geo-layers@8.9.32/dist.min.js"></script>
+  <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
   <script src="https://d3js.org/d3.v6.min.js"></script>
 </head>
 
@@ -115,7 +115,7 @@
       }
     });
 
-    // 1) Globe background via a WMSLayer (full coverage)
+    // Layer 1, background globe
     function createGlobeBg() {
       return new deck._WMSLayer({
         id: `osm-wms-globe`,
@@ -128,7 +128,7 @@
       });
     }
 
-    // 2) Flat‐map background via TileLayer
+    // Layer 1, background map
     function createMapBg() {
       return new deck.TileLayer({
         id: 'osm-tiles',
@@ -147,7 +147,7 @@
       });
     }
 
-    // 3) Initialize one panel (globe/map + dropdowns + tooltip)
+    // Init function for seperate panel
     function initPanel(panelId, globeDivId, modelSelectId, viewSelectId, leadId) {
       const panel   = document.getElementById(panelId);
       const tooltip = panel.querySelector('.tooltip');
@@ -161,7 +161,7 @@
       // Shared DeckGL instance
       const deckgl = new deck.DeckGL({
         container: globeDivId,
-        views: [],                // set dynamically
+        views: [],                
         initialViewState: {
           latitude: 20,
           longitude: 0,
@@ -170,7 +170,7 @@
           pitch: 0
         },
         controller: true,
-        layers: []                // set dynamically
+        layers: []               
       });
 
       // Redraw whenever model or view changes
@@ -182,7 +182,7 @@
       async function loadPanel() {
         const loading = panel.querySelector('.loading');
         loading.classList.add('show');    
-        // a) fetch the data (both models same for now)
+        // Hardcoded data fetch
         const qs = new URLSearchParams({
           init:   '2021-12-30T00:00:00Z',
           lead:   leadSel.value,
@@ -195,7 +195,7 @@
             ((f.geometry.coordinates[0] + 180) % 360) - 180;
         });
 
-        // b) build D3 color & radius scales
+        // GeoJSON points with colors
         const pts    = geojson.features;
         const vals   = pts.map(f => f.properties.geopotential);
         const minVal = Math.min(...vals), maxVal = Math.max(...vals);
@@ -205,7 +205,7 @@
                               .domain([minVal, maxVal])
                               .range([10000, 50000]);
 
-        // c) scatter layer
+        // Layer 2, geojson
         const scatter = new deck.ScatterplotLayer({
           id:    `scatter-${panelId}`,
           data:  pts,
@@ -236,8 +236,21 @@
             }
           }
         });
+        const heatmap = new deck.HeatmapLayer({
+          id:        `heat-${panelId}`,      // unique ID per panel
+          data:      pts,                    // same GeoJSON features array
+          getPosition: f => f.geometry.coordinates,
+          // Optionally use geopotential as a “weight” so areas with higher
+          // geopotential contribute more to the heatmap intensity. If you
+          // just want uniform density, omit getWeight (it defaults to 1).
+          getWeight: f => f.properties.geopotential,
+          radiusPixels: 60,                  // adjust radius depending on zoom
+          intensity:    1,                   // multiplier for overall opacity
+          threshold:    0.03,
+          opacity: 0.5                 // lower threshold shows more “spread”
+        });
 
-        // d) pick view & background
+        // Switcher for views
         const isGlobe = viewSel.value === 'globe';
         const bgLayer = isGlobe ? globeBg : mapBg;
         const views   = isGlobe
@@ -247,13 +260,13 @@
 
         deckgl.setProps({
           views,
-          layers: [ bgLayer, scatter ]
+          layers: [ bgLayer, heatmap ]
         });
         loading.classList.remove('show');
       }
     }
 
-    // 4) Kick off both panels
+    // Init
     initPanel('panel1', 'globe1', 'model1', 'view1', 'lead1');
     initPanel('panel2', 'globe2', 'model2', 'view2', 'lead2');
   </script>

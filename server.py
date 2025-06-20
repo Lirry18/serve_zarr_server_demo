@@ -10,7 +10,6 @@ from xpublish_edr.plugin import CfEdrPlugin
 from xpublish_wms.plugin import CfWmsPlugin
 from enum import Enum
 from typing import Literal
-from pandas import Timestamp, Timedelta
 from fastapi import HTTPException
 import numpy as np
 from fastapi.responses import JSONResponse
@@ -75,10 +74,6 @@ def subset_bbox(da, west, south, east, north):
     return da.where(mask, drop=True)
 
 def da_to_geojson(da: xr.DataArray, value_key: str = "value") -> dict:
-    """
-    Convert a 1-D point cloud DataArray to a GeoJSON FeatureCollection.
-    Assumes coords latitude(point), longitude(point).
-    """
     lat  = da["latitude"].values
     lon  = da["longitude"].values
     vals = da.values
@@ -113,6 +108,7 @@ def mean14(west: float, south: float, east: float, north: float,
            member: int = 0, 
            lead: int = Query(0, ge=0, le=10, description="number of days after init time"),
            pressure_level: int = Query(500, enum=[500], description="pressure Level in hPa"),
+           user  = Depends(get_current_user)
            ):
     if west >= east or south >= north:
         raise HTTPException(status_code=400, detail="ongeldige bbox")
@@ -147,7 +143,7 @@ def geojson(
     south : float|None = None,
     east  : float|None = None,
     north : float|None = None,
-    user  = Depends(get_current_user),
+    ## user  = Depends(get_current_user), UNCOMMENT THIS FOR AUTH
 ):
     lead_td = np.timedelta64(lead, "D")
 
